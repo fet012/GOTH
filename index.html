@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GOTH — Ethereum Wallet Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:    #E8E3D8;
+    --paper-2:  #DFD9CB;
+    --ink:      #14130F;
+    --ink-2:    #4A463C;
+    --ink-3:    #7A7466;
+    --rule:     #C4BCA8;
+    --rule-2:   #A89F88;
+    --signal:   #B23A1E;
+    --verified: #2F5D3A;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --strip-h: 44px;
+    --pad: 24px;
+  }
+  [data-theme="dark"] {
+    --paper:    #14130F;
+    --paper-2:  #1C1B16;
+    --ink:      #E8E3D8;
+    --ink-2:    #B8B2A2;
+    --ink-3:    #7A7466;
+    --rule:     #2A2820;
+    --rule-2:   #3A372C;
+    --signal:   #E0603C;
+    --verified: #6FA57C;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* ── Status strip ───────────────────────────────────────────── */
+  .strip {
+    position: sticky; top: 0; z-index: 20;
+    height: var(--strip-h);
+    display: flex; align-items: center;
+    gap: 20px;
+    padding: 0 var(--pad);
+    background: var(--paper);
+    border-bottom: 1px solid var(--ink);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .strip .mark {
+    font-weight: 600; letter-spacing: 0.14em; font-size: 13px;
+  }
+  .strip .mark .dot { color: var(--signal); }
+  .strip .sep { color: var(--rule-2); }
+  .strip .field { display: inline-flex; align-items: baseline; gap: 8px; }
+  .strip .field .k {
+    color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.12em; font-size: 10px;
+  }
+  .strip .field .v { color: var(--ink); font-weight: 500; }
+  .strip .grow { flex: 1; }
+  .strip .live {
+    display: inline-flex; align-items: center; gap: 8px;
+    color: var(--ink-2);
+  }
+  .strip .pulse {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--verified);
+    box-shadow: 0 0 0 0 var(--verified);
+    animation: beat 12s ease-out infinite;
+  }
+  .strip .live.stale .pulse {
+    background: var(--signal);
+    animation: none;
+  }
+  .strip .live.stale { color: var(--signal); }
+  @keyframes beat {
+    0%   { box-shadow: 0 0 0 0 color-mix(in oklab, var(--verified) 60%, transparent); }
+    12%  { box-shadow: 0 0 0 6px color-mix(in oklab, var(--verified) 0%, transparent); }
+    100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--verified) 0%, transparent); }
+  }
+  .strip button.theme {
+    background: transparent; border: 1px solid var(--rule-2);
+    color: var(--ink-2); font-family: var(--mono); font-size: 11px;
+    padding: 4px 10px; cursor: pointer; border-radius: 2px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .strip button.theme:hover { border-color: var(--ink); color: var(--ink); }
+  .strip button.theme:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+  /* ── Main register ─────────────────────────────────────────── */
+  main { padding: 0 var(--pad) 80px; }
+  .register {
+    border-bottom: 1px solid var(--rule);
+    padding: 28px 0 32px;
+  }
+  .register:last-child { border-bottom: none; }
+  .reg-head {
+    display: flex; align-items: baseline; gap: 14px;
+    margin-bottom: 18px;
+  }
+  .reg-head h2 {
+    font-family: var(--mono); font-size: 11px; font-weight: 600;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    margin: 0; color: var(--ink);
+  }
+  .reg-head .rule { flex: 1; height: 1px; background: var(--rule); }
+  .reg-head .meta { font-family: var(--mono); font-size: 11px; color: var(--ink-3); letter-spacing: 0.06em; }
+
+  /* ── Query register ────────────────────────────────────────── */
+  .query {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0;
+    border: 1px solid var(--ink);
+    background: var(--paper-2);
+    max-width: 720px;
+  }
+  .query input {
+    font-family: var(--mono); font-size: 13px;
+    background: transparent; border: 0; padding: 12px 14px;
+    color: var(--ink); outline: none; width: 100%;
+    letter-spacing: 0.02em;
+  }
+  .query input::placeholder { color: var(--ink-3); }
+  .query input:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
+  .query button {
+    font-family: var(--mono); font-size: 12px; font-weight: 500;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    background: var(--ink); color: var(--paper);
+    border: 0; padding: 0 20px; cursor: pointer;
+    border-left: 1px solid var(--ink);
+  }
+  .query button:hover { background: var(--signal); border-color: var(--signal); }
+  .query button:focus-visible { outline: 2px solid var(--signal); outline-offset: -3px; }
+  .query button[disabled] { opacity: 0.4; cursor: not-allowed; }
+  .query-hint {
+    font-family: var(--mono); font-size: 11px; color: var(--ink-3);
+    margin-top: 8px; letter-spacing: 0.04em;
+  }
+  .query-hint.err { color: var(--signal); }
+
+  /* ── Address header (result) ───────────────────────────────── */
+  .addr-head {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 16px 28px;
+    margin-top: 24px; margin-bottom: 20px;
+  }
+  .addr-head .who {
+    font-family: var(--mono); font-size: 12px; color: var(--ink-2);
+    word-break: break-all;
+  }
+  .addr-head .who b { color: var(--ink); font-weight: 600; }
+  .addr-head .bal {
+    font-family: var(--mono); font-size: 28px; font-weight: 500;
+    color: var(--ink); letter-spacing: -0.01em;
+    display: inline-flex; align-items: baseline; gap: 8px;
+  }
+  .addr-head .bal .unit {
+    font-size: 12px; color: var(--ink-3); letter-spacing: 0.14em;
+    text-transform: uppercase; font-weight: 500;
+  }
+  .addr-head .bal .delta {
+    font-size: 12px; letter-spacing: 0.04em;
+  }
+  .addr-head .bal .delta.up { color: var(--verified); }
+  .addr-head .bal .delta.down { color: var(--signal); }
+
+  /* ── The pulse ledger (signature) ──────────────────────────── */
+  .ledger {
+    display: grid;
+    grid-template-columns: 56px 1fr;
+    column-gap: 20px;
+    position: relative;
+  }
+  .axis {
+    position: relative;
+    border-right: 1px solid var(--rule);
+    padding-top: 4px;
+  }
+  .axis .tick {
+    height: 44px; position: relative;
+    display: flex; align-items: flex-start; justify-content: flex-end;
+    padding-right: 10px;
+  }
+  .axis .tick .blk {
+    font-family: var(--mono); font-size: 10px;
+    color: var(--ink-3); letter-spacing: 0.06em;
+    transform: translateY(-2px);
+  }
+  .axis .tick::after {
+    content: ""; position: absolute; right: -1px; top: 6px;
+    width: 7px; height: 1px; background: var(--rule-2);
+  }
+  .axis .tick.live::after { background: var(--signal); }
+  .axis .tick.live .blk { color: var(--signal); font-weight: 600; }
+  .axis .cursor {
+    position: absolute; right: -5px; top: 2px;
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--signal);
+    animation: pulseDot 12s ease-out infinite;
+  }
+  @keyframes pulseDot {
+    0%   { box-shadow: 0 0 0 0 color-mix(in oklab, var(--signal) 70%, transparent); }
+    15%  { box-shadow: 0 0 0 8px color-mix(in oklab, var(--signal) 0%, transparent); }
+    100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--signal) 0%, transparent); }
+  }
+
+  .txs { min-width: 0; }
+  .txs .empty {
+    font-family: var(--mono); font-size: 12px; color: var(--ink-3);
+    padding: 12px 0; letter-spacing: 0.04em;
+  }
+  .tx {
+    display: grid;
+    grid-template-columns: 68px 1fr auto;
+    gap: 16px;
+    align-items: baseline;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--rule);
+    font-family: var(--mono); font-size: 12px;
+  }
+  .tx:first-child { border-top: 1px solid var(--rule); }
+  .tx .dir {
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    font-weight: 600;
+  }
+  .tx .dir.sent     { color: var(--signal); }
+  .tx .dir.received { color: var(--verified); }
+  .tx .dir.self     { color: var(--ink-3); }
+  .tx .hash {
+    color: var(--ink-2); word-break: break-all; font-size: 11.5px;
+  }
+  .tx .hash b { color: var(--ink); font-weight: 500; }
+  .tx .val {
+    color: var(--ink); font-weight: 500; white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .tx .val .u { color: var(--ink-3); font-size: 10px; letter-spacing: 0.14em; margin-left: 4px; }
+
+  /* ── Watch list ────────────────────────────────────────────── */
+  .watch {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono); font-size: 12px;
+  }
+  .watch th, .watch td {
+    text-align: left; padding: 10px 12px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: baseline;
+  }
+  .watch th {
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 600;
+    border-bottom: 1px solid var(--ink);
+    padding-top: 6px; padding-bottom: 8px;
+  }
+  .watch td.addr { color: var(--ink); word-break: break-all; }
+  .watch td.bal  { font-variant-numeric: tabular-nums; color: var(--ink); font-weight: 500; }
+  .watch td.bal .u { color: var(--ink-3); font-size: 10px; margin-left: 3px; letter-spacing: 0.14em; }
+  .watch td.blk  { color: var(--ink-3); font-size: 11px; }
+  .watch td.act  { text-align: right; }
+  .watch .x {
+    background: transparent; border: 1px solid var(--rule-2);
+    color: var(--ink-2); width: 22px; height: 22px; border-radius: 2px;
+    font-family: var(--mono); font-size: 12px; line-height: 1;
+    cursor: pointer; padding: 0;
+  }
+  .watch .x:hover { border-color: var(--signal); color: var(--signal); }
+  .watch .x:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+  .watch .row-empty td {
+    color: var(--ink-3); padding: 18px 12px; font-size: 11.5px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Loading & skeleton ────────────────────────────────────── */
+  .loading {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .loading .bar {
+    display: inline-block; width: 48px; height: 2px; background: var(--rule);
+    position: relative; overflow: hidden;
+  }
+  .loading .bar::after {
+    content: ""; position: absolute; left: -48px; top: 0; width: 48px; height: 100%;
+    background: var(--signal); animation: sweep 1.2s linear infinite;
+  }
+  @keyframes sweep { to { left: 48px; } }
+  .skel {
+    display: inline-block; background: var(--rule);
+    opacity: 0.55; height: 12px; border-radius: 2px;
+    animation: skel 1.6s ease-in-out infinite;
+  }
+  @keyframes skel { 0%,100% { opacity: 0.35; } 50% { opacity: 0.7; } }
+
+  /* ── Footer ────────────────────────────────────────────────── */
+  footer {
+    border-top: 1px solid var(--ink);
+    padding: 16px var(--pad);
+    font-family: var(--mono); font-size: 11px; color: var(--ink-3);
+    display: flex; flex-wrap: wrap; gap: 20px; justify-content: space-between;
+    letter-spacing: 0.04em;
+  }
+  footer a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--rule-2); }
+  footer a:hover { color: var(--signal); border-color: var(--signal); }
+  footer a:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+
+  /* ── Responsive ────────────────────────────────────────────── */
+  @media (max-width: 680px) {
+    :root { --pad: 14px; }
+    .strip { gap: 12px; overflow-x: auto; white-space: nowrap; }
+    .strip .hide-sm { display: none; }
+    .query { grid-template-columns: 1fr; }
+    .query button { border-left: 0; border-top: 1px solid var(--ink); padding: 12px; }
+    .addr-head .bal { font-size: 22px; }
+    .ledger { grid-template-columns: 44px 1fr; column-gap: 12px; }
+    .tx { grid-template-columns: 60px 1fr; row-gap: 4px; }
+    .tx .val { grid-column: 2; text-align: left; }
+    .watch th:nth-child(3), .watch td:nth-child(3) { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .strip .pulse, .axis .cursor, .loading .bar::after, .skel { animation: none !important; }
+    .loading .bar::after { left: 0; width: 100%; opacity: 0.5; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Status strip ──────────────────────────────────────────── -->
+<div class="strip" role="banner">
+  <span class="mark">GOTH<span class="dot">.</span></span>
+  <span class="sep hide-sm">/</span>
+  <span class="field hide-sm">
+    <span class="k">Block</span>
+    <span class="v" id="strip-block">—</span>
+  </span>
+  <span class="sep hide-sm">/</span>
+  <span class="field hide-sm">
+    <span class="k">Hash</span>
+    <span class="v" id="strip-hash">—</span>
+  </span>
+  <span class="grow"></span>
+  <span class="live" id="strip-live">
+    <span class="pulse" aria-hidden="true"></span>
+    <span id="strip-live-label">connecting</span>
+  </span>
+  <span class="field hide-sm">
+    <span class="k">UTC</span>
+    <span class="v" id="strip-clock">—</span>
+  </span>
+  <button class="theme" id="theme-toggle" type="button" aria-label="Toggle color theme">theme</button>
+</div>
+
+<main>
+  <!-- ── Query register ─────────────────────────────────────── -->
+  <section class="register" aria-labelledby="q-h">
+    <div class="reg-head">
+      <h2 id="q-h">Query</h2>
+      <span class="rule"></span>
+      <span class="meta">address lookup</span>
+    </div>
+    <form class="query" id="query-form" autocomplete="off">
+      <input
+        id="addr-input"
+        type="text"
+        spellcheck="false"
+        autocapitalize="off"
+        autocorrect="off"
+        placeholder="0x…"
+        aria-label="Ethereum address"
+        pattern="^0x[a-fA-F0-9]{40}$"
+      />
+      <button id="query-btn" type="submit">Track</button>
+    </form>
+    <div class="query-hint" id="query-hint">
+      Enter a 42-character hex address. Data is fetched live from the Go backend.
+    </div>
+  </section>
+
+  <!-- ── Wallet register ────────────────────────────────────── -->
+  <section class="register" aria-labelledby="w-h" id="wallet-reg" hidden>
+    <div class="reg-head">
+      <h2 id="w-h">Wallet</h2>
+      <span class="rule"></span>
+      <span class="meta" id="wallet-meta">—</span>
+    </div>
+
+    <div class="addr-head">
+      <div class="who">
+        <b id="w-addr">—</b>
+      </div>
+      <div class="bal">
+        <span id="w-bal">—</span>
+        <span class="unit">ETH</span>
+        <span class="delta" id="w-delta"></span>
+      </div>
+    </div>
+
+    <div class="ledger">
+      <div class="axis" id="axis" aria-hidden="true"></div>
+      <div class="txs" id="txs">
+        <div class="empty">No transactions in the last 5 blocks.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Watch list register ────────────────────────────────── -->
+  <section class="register" aria-labelledby="wl-h">
+    <div class="reg-head">
+      <h2 id="wl-h">Watch list</h2>
+      <span class="rule"></span>
+      <span class="meta" id="watch-meta">—</span>
+    </div>
+    <table class="watch" id="watch-table">
+      <thead>
+        <tr>
+          <th scope="col">Address</th>
+          <th scope="col">Balance</th>
+          <th scope="col">Last block</th>
+          <th scope="col" aria-label="Actions"></th>
+        </tr>
+      </thead>
+      <tbody id="watch-body">
+        <tr class="row-empty"><td colspan="4">No addresses watched. Add one above.</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+
+<footer>
+  <span>GOTH — Go + Ethereum Wallet Monitor · v1.0</span>
+  <span>Data via <a href="https://eth.llamarpc.com" rel="noopener">eth.llamarpc.com</a> · poll 12s</span>
+</footer>
+
+<script>
+(() => {
+  "use strict";
+
+  // ── Config ─────────────────────────────────────────────────
+  const POLL_MS = 12000;
+  const ADDR_RE = /^0x[a-fA-F0-9]{40}$/;
+
+  // ── DOM ────────────────────────────────────────────────────
+  const $ = (id) => document.getElementById(id);
+  const stripBlock = $("strip-block");
+  const stripHash  = $("strip-hash");
+  const stripLive  = $("strip-live");
+  const stripLiveLabel = $("strip-live-label");
+  const stripClock = $("strip-clock");
+  const themeBtn   = $("theme-toggle");
+
+  const form       = $("query-form");
+  const input      = $("addr-input");
+  const queryBtn   = $("query-btn");
+  const hint       = $("query-hint");
+
+  const walletReg  = $("wallet-reg");
+  const walletMeta = $("wallet-meta");
+  const wAddr      = $("w-addr");
+  const wBal       = $("w-bal");
+  const wDelta     = $("w-delta");
+  const axis       = $("axis");
+  const txs        = $("txs");
+
+  const watchBody  = $("watch-body");
+  const watchMeta  = $("watch-meta");
+
+  // ── State ──────────────────────────────────────────────────
+  const state = {
+    watched: new Map(),   // lowercased address -> { eth, lastBlock, delta }
+    current: null,        // lowercased address currently displayed
+    lastBlock: null,
+    lastTxHashes: new Set(),
+  };
+
+  // ── Utilities ──────────────────────────────────────────────
+  const shortHash = (h, n = 10) => h ? h.slice(0, 2 + n) + "…" + h.slice(-4) : "—";
+  const shortAddr = (a) => a ? a.slice(0, 6) + "…" + a.slice(-4) : "—";
+  const fmtEth = (s) => {
+    if (s == null) return "—";
+    const n = Number(s);
+    if (!isFinite(n)) return s;
+    return n.toLocaleString("en-US", { minimumFractionDigits: 6, maximumFractionDigits: 6 });
+  };
+  const fmtBlock = (n) => n == null ? "—" : Number(n).toLocaleString("en-US");
+
+  async function getJSON(url) {
+    const res = await fetch(url, { headers: { "Accept": "application/json" } });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+    return body;
+  }
+
+  function setLive(ok, label) {
+    stripLive.classList.toggle("stale", !ok);
+    stripLiveLabel.textContent = label;
+  }
+
+  function setHint(msg, isErr) {
+    hint.textContent = msg;
+    hint.classList.toggle("err", !!isErr);
+  }
+
+  function markLoaded() {
+    document.body.dataset.loaded = "1";
+  }
+
+  // ── Clock ──────────────────────────────────────────────────
+  function tickClock() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    stripClock.textContent =
+      `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  // ── Theme ──────────────────────────────────────────────────
+  const savedTheme = localStorage.getItem("goth-theme");
+  if (savedTheme === "dark") document.documentElement.dataset.theme = "dark";
+  themeBtn.addEventListener("click", () => {
+    const cur = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    if (cur === "dark") document.documentElement.dataset.theme = "dark";
+    else delete document.documentElement.dataset.theme;
+    localStorage.setItem("goth-theme", cur);
+  });
+
+  // ── Status strip: latest block ─────────────────────────────
+  async function refreshLatestBlock() {
+    try {
+      const b = await getJSON("/block/latest");
+      state.lastBlock = b.number;
+      stripBlock.textContent = fmtBlock(b.number);
+      stripHash.textContent = shortHash(b.hash, 6);
+      stripHash.title = b.hash;
+      setLive(true, "live");
+    } catch (e) {
+      setLive(false, "stale");
+    }
+  }
+
+  // ── Query register: load a wallet ──────────────────────────
+  function validateInput(v) {
+    if (!v) return "Enter an address to track.";
+    if (!v.startsWith("0x")) return "Address must start with 0x.";
+    if (v.length !== 42) return `Address must be 42 characters (got ${v.length}).`;
+    if (!ADDR_RE.test(v)) return "Address contains non-hex characters.";
+    return null;
+  }
+
+  async function loadWallet(rawAddr) {
+    const addr = rawAddr.toLowerCase();
+    const err = validateInput(addr);
+    if (err) { setHint(err, true); return; }
+
+    setHint("Fetching live data from the Go backend…", false);
+    queryBtn.disabled = true;
+    walletReg.hidden = false;
+    walletMeta.textContent = "loading";
+    wAddr.textContent = addr;
+    wBal.innerHTML = '<span class="skel" style="width:120px"></span>';
+    wDelta.textContent = "";
+    txs.innerHTML = '<div class="empty">Loading transactions…</div>';
+    axis.innerHTML = "";
+
+    try {
+      const [bal, txsResp] = await Promise.all([
+        getJSON(`/balance/${addr}`),
+        getJSON(`/transactions/${addr}`),
+      ]);
+
+      // Balance
+      const newBal = bal.eth;
+      const prev = state.watched.get(addr);
+      wBal.textContent = fmtEth(newBal);
+      wDelta.textContent = "";
+      wDelta.className = "delta";
+      if (prev && prev.eth && prev.eth !== newBal) {
+        const diff = Number(newBal) - Number(prev.eth);
+        if (diff !== 0) {
+          wDelta.textContent = (diff > 0 ? "+" : "") + diff.toFixed(6) + " ETH";
+          wDelta.classList.add(diff > 0 ? "up" : "down");
+        }
+      }
+
+      // Register in watch map
+      state.watched.set(addr, {
+        eth: newBal,
+        lastBlock: txsResp.scanned_block,
+        delta: wDelta.textContent || "",
+      });
+
+      // Transactions + axis
+      renderTransactions(txsResp.transactions || [], txsResp.scanned_block);
+      walletMeta.textContent = `scanned block ${fmtBlock(txsResp.scanned_block)}`;
+      setHint("Live. Refreshes every 12 seconds.", false);
+
+      state.current = addr;
+      renderWatchTable();
+    } catch (e) {
+      setHint(`Request failed: ${e.message}`, true);
+      wBal.textContent = "—";
+      txs.innerHTML = '<div class="empty">Could not load transactions.</div>';
+      walletMeta.textContent = "error";
+    } finally {
+      queryBtn.disabled = false;
+      markLoaded();
+    }
+  }
+
+  function renderTransactions(list, scannedBlock) {
+    // Axis: one tick per scanned block, newest at top.
+    const depth = 5;
+    const top = Number(scannedBlock);
+    const ticks = [];
+    for (let i = 0; i < depth; i++) {
+      const blk = top - i;
+      if (blk < 0) break;
+      ticks.push(blk);
+    }
+    axis.innerHTML = ticks.map((blk, i) => `
+      <div class="tick${i === 0 ? " live" : ""}">
+        <span class="blk">#${fmtBlock(blk)}</span>
+      </div>
+    `).join("") + (ticks.length ? '<div class="cursor" aria-hidden="true"></div>' : "");
+
+    if (!list.length) {
+      txs.innerHTML = '<div class="empty">No transactions in the last 5 blocks.</div>';
+      return;
+    }
+
+    // Group by block? The API returns a flat list; keep it flat but
+    // make the axis carry the time signal.
+    txs.innerHTML = list.map((tx) => {
+      const dir = (tx.direction || "received").toLowerCase();
+      const dirLabel = dir === "self" ? "self" : dir;
+      return `
+        <div class="tx">
+          <span class="dir ${dir}">${dirLabel}</span>
+          <span class="hash">
+            <b>${shortHash(tx.hash, 8)}</b>
+            &nbsp; ${dir === "sent" ? "→" : "←"} ${shortAddr(dir === "sent" ? tx.to : tx.from)}
+          </span>
+          <span class="val">${fmtEth(tx.eth)}<span class="u">ETH</span></span>
+        </div>
+      `;
+    }).join("");
+  }
+
+  // ── Watch list ─────────────────────────────────────────────
+  async function addToWatch(addr) {
+    const a = addr.toLowerCase();
+    if (!ADDR_RE.test(a)) return;
+    try {
+      await getJSON(`/watch/${a}`);
+      if (!state.watched.has(a)) {
+        state.watched.set(a, { eth: null, lastBlock: null, delta: "" });
+      }
+      await refreshWatchBalances();
+      renderWatchTable();
+      setHint(`Added ${shortAddr(a)} to watch list.`, false);
+    } catch (e) {
+      setHint(`Watch failed: ${e.message}`, true);
+    }
+  }
+
+  async function refreshWatchBalances() {
+    const list = await getJSON("/watched").catch(() => ({ watched_addresses: [] }));
+    for (const a of list.watched_addresses || []) {
+      try {
+        const bal = await getJSON(`/balance/${a}`);
+        const prev = state.watched.get(a) || {};
+        state.watched.set(a, {
+          eth: bal.eth,
+          lastBlock: state.lastBlock,
+          delta: prev.delta || "",
+        });
+      } catch { /* keep prior value */ }
+    }
+  }
+
+  function renderWatchTable() {
+    const entries = [...state.watched.entries()];
+    if (!entries.length) {
+      watchBody.innerHTML =
+        '<tr class="row-empty"><td colspan="4">No addresses watched. Add one above.</td></tr>';
+      watchMeta.textContent = "0 addresses";
+      return;
+    }
+    watchMeta.textContent = `${entries.length} address${entries.length === 1 ? "" : "es"}`;
+    watchBody.innerHTML = entries.map(([addr, data]) => `
+      <tr>
+        <td class="addr">${addr}</td>
+        <td class="bal">${data.eth != null ? fmtEth(data.eth) : '<span class="skel" style="width:70px"></span>'}<span class="u">ETH</span></td>
+        <td class="blk">${data.lastBlock != null ? "#" + fmtBlock(data.lastBlock) : "—"}</td>
+        <td class="act">
+          <button class="x" type="button" data-addr="${addr}" aria-label="Remove ${addr} from watch list">×</button>
+        </td>
+      </tr>
+    `).join("");
+
+    watchBody.querySelectorAll("button.x").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.watched.delete(btn.dataset.addr);
+        renderWatchTable();
+      });
+    });
+  }
+
+  // ── Form wiring ────────────────────────────────────────────
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = input.value.trim();
+    const err = validateInput(v);
+    if (err) { setHint(err, true); return; }
+    loadWallet(v);
+    addToWatch(v); // best-effort; watch list is separate from the query
+  });
+
+  input.addEventListener("input", () => {
+    const v = input.value.trim();
+    if (!v) { setHint("Enter a 42-character hex address. Data is fetched live from the Go backend.", false); return; }
+    const err = validateInput(v);
+    if (err) setHint(err, true);
+    else setHint("Address looks valid. Press Track.", false);
+  });
+
+  // ── Auto-refresh ───────────────────────────────────────────
+  async function refreshLoop() {
+    await refreshLatestBlock();
+    if (state.current) {
+      // Refresh current wallet's balance without clobbering the axis if unchanged.
+      try {
+        const bal = await getJSON(`/balance/${state.current}`);
+        const prev = state.watched.get(state.current);
+        if (prev) {
+          if (prev.eth && prev.eth !== bal.eth) {
+            const diff = Number(bal.eth) - Number(prev.eth);
+            if (diff !== 0) {
+              wDelta.textContent = (diff > 0 ? "+" : "") + diff.toFixed(6) + " ETH";
+              wDelta.className = "delta " + (diff > 0 ? "up" : "down");
+            }
+          }
+          prev.eth = bal.eth;
+          prev.lastBlock = state.lastBlock;
+          wBal.textContent = fmtEth(bal.eth);
+        }
+      } catch { /* keep last known */ }
+      // Refresh transactions for the current wallet.
+      try {
+        const txsResp = await getJSON(`/transactions/${state.current}`);
+        renderTransactions(txsResp.transactions || [], txsResp.scanned_block);
+        walletMeta.textContent = `scanned block ${fmtBlock(txsResp.scanned_block)}`;
+      } catch { /* keep last known */ }
+    }
+    await refreshWatchBalances();
+    renderWatchTable();
+  }
+
+  refreshLoop();
+  setInterval(refreshLoop, POLL_MS);
+
+  // ── Boot: seed watch list from server ──────────────────────
+  (async () => {
+    try {
+      const list = await getJSON("/watched");
+      for (const a of list.watched_addresses || []) {
+        state.watched.set(a.toLowerCase(), { eth: null, lastBlock: null, delta: "" });
+      }
+      await refreshWatchBalances();
+      renderWatchTable();
+    } catch { /* server may have no watch list yet */ }
+  })();
+})();
+</script>
+</body>
+</html>

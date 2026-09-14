@@ -1,4 +1,4 @@
-# Go ETH Wallet Monitor
+# 🔍 Go ETH Wallet Monitor
 
 A zero-dependency Ethereum wallet watcher written in pure Go. Monitors one or more addresses for balance changes and incoming/outgoing transactions in real time.
 

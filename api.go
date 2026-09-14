@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -207,16 +208,19 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/block/latest", s.handleLatestBlock)
 	s.mux.HandleFunc("/watch/", s.handleWatch)
 	s.mux.HandleFunc("/watched", s.handleWatched)
+	s.mux.HandleFunc("/api", s.handleAPIIndex)
 	s.mux.HandleFunc("/", s.handleIndex)
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// CORS + JSON headers on every response
-	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	// Only default to JSON for /api-style routes; HTML handler sets its own.
+	if !strings.HasPrefix(r.URL.Path, "/balance/") &&
+		r.URL.Path != "/" {
+		// leave Content-Type to the handler
+	}
 	s.mux.ServeHTTP(w, r)
 }
-
 // GET /balance/:address
 func (s *Server) handleBalance(w http.ResponseWriter, r *http.Request) {
 	address := strings.TrimPrefix(r.URL.Path, "/balance/")
@@ -252,11 +256,17 @@ func (s *Server) handleTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Scan last 5 blocks for transactions involving this address
+		// Scan last 5 blocks for transactions involving this address.
+	// Clamp the start so we don't underflow uint64 on early blocks.
+	const depth uint64 = 5
+	start := uint64(0)
+	if blockNum >= depth {
+		start = blockNum - depth + 1
+	}
+
 	addrLower := strings.ToLower(address)
 	var txSummaries []TxSummary
 
-	start := blockNum - 4
 	for b := start; b <= blockNum; b++ {
 		block, err := s.eth.GetBlockByNumber(b)
 		if err != nil {
@@ -348,8 +358,21 @@ func (s *Server) handleWatched(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GET /
+//go:embed index.html
+var indexHTML []byte
+// GET / — serves the frontend (single HTML file)
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	http.ServeFile(w, r, "index.html")
+}
+
+// GET /api — JSON index of available routes (kept from the original handler)
+func (s *Server) handleAPIIndex(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"name":    "GOTH API — Go + Ethereum",
 		"version": "1.0.0",
@@ -359,6 +382,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 			"GET /block/latest",
 			"GET /watch/:address",
 			"GET /watched",
+			"GET /api",
 		},
 	})
 }
