@@ -2,12 +2,13 @@ package main
 
 import (
 	"bytes"
-	"embed"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"math/big"
 	"net/http"
 	"strings"
+	"os"
 	"sync"
 	"time"
 )
@@ -360,15 +361,15 @@ func (s *Server) handleWatched(w http.ResponseWriter, r *http.Request) {
 
 //go:embed index.html
 var indexHTML []byte
+
 // GET / — serves the frontend (single HTML file)
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
-	
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	http.ServeFile(w, r, "index.html")
+	w.Write(indexHTML)
 }
 
 // GET /api — JSON index of available routes (kept from the original handler)
@@ -421,8 +422,8 @@ func weiToEth(wei *big.Int) string {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 func main() {
-	rpcURL := "https://eth.llamarpc.com"
-	port := ":8080"
+	rpcURL := getEnv("ETH_RPC_URL", "https://eth.llamarpc.com")
+	port := ":" + getEnv("PORT", "8080")
 
 	eth := NewEthClient(rpcURL)
 	server := NewServer(eth)
@@ -430,16 +431,28 @@ func main() {
 	fmt.Println("╔══════════════════════════════════════╗")
 	fmt.Println("║     GOTH API  —  Go + Ethereum      ║")
 	fmt.Println("╚══════════════════════════════════════╝")
-	fmt.Printf("  Listening on http://localhost%s\n\n", port)
-	fmt.Println("  Routes:")
-	fmt.Println("  GET /balance/:address")
-	fmt.Println("  GET /transactions/:address")
-	fmt.Println("  GET /block/latest")
-	fmt.Println("  GET /watch/:address")
-	fmt.Println("  GET /watched")
-	fmt.Println()
+	fmt.Printf("  Listening on http://localhost%s\n", port)
+	fmt.Printf("  RPC: %s\n\n", maskURL(rpcURL))
 
 	if err := http.ListenAndServe(port, server); err != nil {
 		fmt.Printf("Server error: %v\n", err)
 	}
+}
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func maskURL(url string) string {
+	
+	if i := strings.Index(url, "://"); i != -1 {
+		rest := url[i+3:]
+		if j := strings.Index(rest, "/"); j != -1 {
+			return url[:i+3] + rest[:j] + "/…"
+		}
+	}
+	return url
 }
