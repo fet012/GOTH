@@ -1,0 +1,17 @@
+# Compiled binaries
+*.exe
+*.exe~
+goth
+goth.exe
+
+# Build artifacts
+*.test
+*.out
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor folders
+.vscode/
+.idea/
